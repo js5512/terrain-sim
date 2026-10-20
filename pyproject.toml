@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terrain-mapper"
+version = "0.1.0"
+description = "Terrain-aware grid mapping and routing starter"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "dash>=2.18",
+    "plotly>=5.24",
+    "rasterio>=1.3",
+    "scikit-image>=0.22",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+terrain-mapper = "terrain_mapper.cli:main"
+terrain-sim = "terrain_mapper.web_sim:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
