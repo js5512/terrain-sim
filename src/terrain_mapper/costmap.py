@@ -189,5 +189,20 @@ def build_costmap(
 
     # Blocked cells: invalid elevations or slope exceeding maximum threshold
     blocked = ~valid | (slope_degrees > config.max_slope_degrees)
+
+    # Boundary validation: bordering empty space or outside valid dimensions
+    invalid = ~np.isfinite(grid.values_m)
+    rows, cols = grid.values_m.shape
+    pad_invalid = np.full((rows + 2, cols + 2), True, dtype=bool)
+    pad_invalid[1:-1, 1:-1] = invalid
+    
+    borders_empty = (
+        pad_invalid[0:-2, 0:-2] | pad_invalid[0:-2, 1:-1] | pad_invalid[0:-2, 2:] |
+        pad_invalid[1:-1, 0:-2] | pad_invalid[1:-1, 1:-1] | pad_invalid[1:-1, 2:] |
+        pad_invalid[2:, 0:-2] | pad_invalid[2:, 1:-1] | pad_invalid[2:, 2:]
+    )
+    
+    blocked |= borders_empty
+
     costs[blocked] = np.inf
     return costs.astype(np.float32)

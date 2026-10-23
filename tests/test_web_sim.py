@@ -248,8 +248,11 @@ def test_start_click_reveals_route_and_starts_playback() -> None:
     assert result is not None
     assert result["paused"] is False
     assert result["route_visible"] is True
-    assert result["revision"] == 1
 
+
+
+
+    assert result["revision"] == 1
 
 def test_waypoint_map_click_updates_mission_state() -> None:
     app = create_app(size=32)

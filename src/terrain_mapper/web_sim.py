@@ -227,6 +227,7 @@ def _cell_for_xy(
 
 def _add_waypoints(state: dict[str, Any], points: list[tuple[float, float]]) -> None:
     waypoints = [tuple(cell) for cell in state.get("waypoints", [])]
+    waypoints_xy = state.get("waypoints_xy", [])
     start = tuple(state["start"])
     goal = tuple(state["goal"])
     bounds = state.get("bounds")
@@ -237,9 +238,11 @@ def _add_waypoints(state: dict[str, Any], points: list[tuple[float, float]]) -> 
         cell = _cell_for_xy(x, y, int(state["size"]), bounds=bounds, rows=rows, cols=cols)
         if cell not in {start, goal, *waypoints}:
             waypoints.append(cell)
+            waypoints_xy.append([x, y])
     if len(waypoints) == len(state.get("waypoints", [])):
         return
     state["waypoints"] = [list(cell) for cell in waypoints]
+    state["waypoints_xy"] = waypoints_xy
     _replan(state)
     state["message"] = f"Mission updated: {len(state['waypoints'])} waypoint(s)"
 
@@ -248,6 +251,7 @@ def _clear_waypoints(state: dict[str, Any]) -> None:
     if not state.get("waypoints"):
         return
     state["waypoints"] = []
+    state["waypoints_xy"] = []
     _replan(state)
     state["message"] = "Mission waypoints cleared"
 
@@ -407,10 +411,12 @@ def _surface_figure(state: dict[str, Any]) -> go.Figure:
 
     start_row, start_col = state["start"]
     goal_row, goal_col = state["goal"]
+    start_x, start_y = state.get("start_xy", [x_coords[start_col], y_coords[start_row]])
+    goal_x, goal_y = state.get("goal_xy", [x_coords[goal_col], y_coords[goal_row]])
     figure.add_trace(
         go.Scatter3d(
-            x=[x_coords[start_col], x_coords[goal_col]],
-            y=[y_coords[start_row], y_coords[goal_row]],
+            x=[start_x, goal_x],
+            y=[start_y, goal_y],
             z=[elevations[start_row, start_col] + 0.3, elevations[goal_row, goal_col] + 0.3],
             mode="markers",
             marker={"size": 5, "color": ["#54cbb0", "#f1c75b"]},
@@ -420,10 +426,11 @@ def _surface_figure(state: dict[str, Any]) -> go.Figure:
     )
     waypoints = np.asarray(state.get("waypoints", []), dtype=int).reshape((-1, 2))
     if len(waypoints):
+        waypoints_xy = np.asarray(state.get("waypoints_xy", np.column_stack((x_coords[waypoints[:, 1]], y_coords[waypoints[:, 0]])))).reshape((-1, 2))
         figure.add_trace(
             go.Scatter3d(
-                x=x_coords[waypoints[:, 1]],
-                y=y_coords[waypoints[:, 0]],
+                x=waypoints_xy[:, 0],
+                y=waypoints_xy[:, 1],
                 z=elevations[waypoints[:, 0], waypoints[:, 1]] + 1.2,
                 mode="markers+text",
                 marker={"size": 7, "color": "#e97642", "symbol": "circle-open"},
@@ -455,7 +462,7 @@ def _surface_figure(state: dict[str, Any]) -> go.Figure:
     return figure
 
 
-def _editor_figure(state: dict[str, Any]) -> go.Figure:
+def _editor_figure(state: dict[str, Any], mode: str = "Raise") -> go.Figure:
     elevations = np.asarray(state["elevation"], dtype=np.float32)
     obstacles = np.asarray(state["obstacles"], dtype=bool)
     rows, cols = elevations.shape
@@ -517,10 +524,12 @@ def _editor_figure(state: dict[str, Any]) -> go.Figure:
         )
     start_row, start_col = state["start"]
     goal_row, goal_col = state["goal"]
+    start_x, start_y = state.get("start_xy", [x_coords[start_col], y_coords[start_row]])
+    goal_x, goal_y = state.get("goal_xy", [x_coords[goal_col], y_coords[goal_row]])
     figure.add_trace(
         go.Scatter(
-            x=[x_coords[start_col], x_coords[goal_col]],
-            y=[y_coords[start_row], y_coords[goal_row]],
+            x=[start_x, goal_x],
+            y=[start_y, goal_y],
             mode="markers",
             marker={"size": 9, "color": ["#54cbb0", "#f1c75b"], "line": {"color": "#ffffff", "width": 1}},
             name="Start / final destination",
@@ -529,10 +538,11 @@ def _editor_figure(state: dict[str, Any]) -> go.Figure:
     )
     waypoints = np.asarray(state.get("waypoints", []), dtype=int).reshape((-1, 2))
     if len(waypoints):
+        waypoints_xy = np.asarray(state.get("waypoints_xy", np.column_stack((x_coords[waypoints[:, 1]], y_coords[waypoints[:, 0]])))).reshape((-1, 2))
         figure.add_trace(
             go.Scatter(
-                x=x_coords[waypoints[:, 1]],
-                y=y_coords[waypoints[:, 0]],
+                x=waypoints_xy[:, 0],
+                y=waypoints_xy[:, 1],
                 mode="markers+text",
                 marker={"size": 11, "color": "#e97642", "symbol": "circle-open"},
                 text=[f"W{index + 1}" for index in range(len(waypoints))],
@@ -583,7 +593,7 @@ def _editor_figure(state: dict[str, Any]) -> go.Figure:
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
         showlegend=False,
-        dragmode="select",
+        dragmode=False if mode in ("Waypoint", "Spawn", "Goal") else "select",
         selectionrevision=int(state.get("revision", 0)),
         uirevision="terrain-editor",
         xaxis={"title": "East (m)", "range": [min_x, max_x], "tickformat": ".0f", "ticksuffix": " m", "constrain": "domain"},
@@ -625,7 +635,7 @@ def _layout(state: dict[str, Any]) -> html.Div:
                             html.Span("Edit", className="tool-label"),
                             dcc.RadioItems(
                                 id="edit-mode",
-                                options=[{"label": name, "value": name} for name in ("Raise", "Lower", "Obstacle", "Erase", "Waypoint")],
+                                options=[{"label": name, "value": name} for name in ("Raise", "Lower", "Obstacle", "Erase", "Waypoint", "Spawn", "Goal")],
                                 value="Raise",
                                 inline=True,
                                 className="mode-selector",
@@ -767,7 +777,7 @@ def create_app(
         if triggered is None:
             return no_update
         if (
-            mode == "Waypoint"
+            mode in ("Waypoint", "Spawn", "Goal")
             and triggered.startswith("editor-graph.")
             and "editor-graph.clickData" in triggered_props
         ):
@@ -860,13 +870,37 @@ def create_app(
 
         points: list[tuple[float, float]] = []
         if component == "editor-graph":
-            if mode == "Waypoint" and prop == "clickData" and click_data:
+            if mode in ("Waypoint", "Spawn", "Goal") and prop == "clickData" and click_data:
                 points = [(float(click_data["points"][0]["x"]), float(click_data["points"][0]["y"]))]
-                _add_waypoints(updated, points)
+                if mode == "Waypoint":
+                    _add_waypoints(updated, points)
+                elif mode == "Spawn":
+                    x, y = points[0]
+                    bounds = updated.get("bounds")
+                    elevations = updated["elevation"]
+                    rows = len(elevations)
+                    cols = len(elevations[0]) if elevations and elevations[0] else int(updated["size"])
+                    cell = _cell_for_xy(x, y, int(updated["size"]), bounds=bounds, rows=rows, cols=cols)
+                    updated["start"] = list(cell)
+                    updated["start_xy"] = [x, y]
+                    updated["vehicle_cell"] = list(cell)
+                    _replan(updated)
+                    updated["message"] = "Spawn point updated"
+                elif mode == "Goal":
+                    x, y = points[0]
+                    bounds = updated.get("bounds")
+                    elevations = updated["elevation"]
+                    rows = len(elevations)
+                    cols = len(elevations[0]) if elevations and elevations[0] else int(updated["size"])
+                    cell = _cell_for_xy(x, y, int(updated["size"]), bounds=bounds, rows=rows, cols=cols)
+                    updated["goal"] = list(cell)
+                    updated["goal_xy"] = [x, y]
+                    _replan(updated)
+                    updated["message"] = "Goal point updated"
                 return updated
-            if mode != "Waypoint" and prop == "clickData" and click_data:
+            if mode not in ("Waypoint", "Spawn", "Goal") and prop == "clickData" and click_data:
                 points = [(float(click_data["points"][0]["x"]), float(click_data["points"][0]["y"]))]
-            elif mode != "Waypoint" and prop == "selectedData" and selected_data:
+            elif mode not in ("Waypoint", "Spawn", "Goal") and prop == "selectedData" and selected_data:
                 points = [
                     (float(point["x"]), float(point["y"]))
                     for point in selected_data.get("points", [])
@@ -885,10 +919,12 @@ def create_app(
         Output("render-revision", "data"),
         Input("sim-state", "data"),
         State("render-revision", "data"),
+        State("edit-mode", "value"),
     )
     def render_state(
         state: dict[str, Any],
         rendered_revision: int,
+        mode: str = "Raise",
     ) -> tuple[Any, ...]:
         if state["path"]:
             waypoint_count = len(state.get("waypoints", []))
@@ -918,7 +954,7 @@ def create_app(
         terrain_changed = int(state["revision"]) != int(rendered_revision)
         if terrain_changed:
             surface_update: go.Figure | Patch = _surface_figure(state)
-            editor_update: go.Figure | Patch = _editor_figure(state)
+            editor_update: go.Figure | Patch = _editor_figure(state, mode)
             revision_update: int | Any = state["revision"]
         else:
             surface_update = no_update
@@ -1038,6 +1074,17 @@ def create_app(
         prevent_initial_call=True,
     )
 
+
+    @app.callback(
+        Output("editor-graph", "figure", allow_duplicate=True),
+        Input("edit-mode", "value"),
+        prevent_initial_call=True,
+    )
+    def update_dragmode(mode: str) -> Patch:
+        patched = Patch()
+        patched["layout"]["dragmode"] = False if mode in ("Waypoint", "Spawn", "Goal") else "select"
+        return patched
+
     return app
 
 
@@ -1059,6 +1106,9 @@ def main() -> None:
     parser.add_argument("--roughness", type=float, default=1.0)
     parser.add_argument("--heightmap", help="initial grayscale image or .npy elevation map")
     parser.add_argument("--dem", help="path to real-world DEM or GeoTIFF (.tif, .tiff, .dem, .asc)")
+    parser.add_argument("--hardware", action="store_true", help="enable live serial hardware input")
+    parser.add_argument("--serial-port", default="/dev/ttyUSB0", help="serial port for HIL communication")
+    parser.add_argument("--baud-rate", type=int, default=115200, help="baud rate for HIL communication")
     args = parser.parse_args()
 
     config = TerrainConfig(
@@ -1066,6 +1116,9 @@ def main() -> None:
         height_variation=args.height_variation,
         obstacle_density=args.obstacle_density,
         roughness=args.roughness,
+        use_hardware=args.hardware,
+        serial_port=args.serial_port,
+        baud_rate=args.baud_rate,
     )
     app = create_app(
         args.size,

@@ -52,6 +52,9 @@ class TerrainConfig:
     seed: int = 7
     max_slope_degrees: float = 45.0
     route_cost_weight: float = 7.0
+    use_hardware: bool = False
+    serial_port: str = "/dev/ttyUSB0"
+    baud_rate: int = 115200
 
     def __post_init__(self) -> None:
         if self.slope_steepness <= 0:
@@ -105,8 +108,6 @@ def load_heightmap(
             from PIL import Image
 
             image = Image.open(path).convert("L")
-            if size is not None and image.size != (size, size):
-                image = image.resize((size, size), resample=Image.BILINEAR)
             array = np.asarray(image, dtype=np.float32)
     else:
         array = np.asarray(path)
@@ -116,15 +117,25 @@ def load_heightmap(
         array = array[..., 0]
     if array.ndim != 2:
         raise ValueError("heightmap must be a 2D grayscale array or image")
+
+    # Detect and mask constant background padding
+    corners = [array[0, 0], array[0, -1], array[-1, 0], array[-1, -1]]
+    if len(set(corners)) == 1:
+        from skimage.segmentation import flood
+        bg_mask = flood(array, (0, 0), tolerance=1e-3)
+        array[bg_mask] = np.nan
+
     if size is not None and array.shape != (size, size):
         array = _resize_to_shape(array, (size, size))
 
-    if not np.isfinite(array).all():
-        raise ValueError("heightmap contains NaN or Inf values")
-    array = array - np.min(array)
-    maximum = float(np.max(array))
+    valid = np.isfinite(array)
+    if not valid.any():
+        raise ValueError("heightmap is entirely empty or padding")
+        
+    array[valid] = array[valid] - np.min(array[valid])
+    maximum = float(np.max(array[valid]))
     if maximum > 0:
-        array = array / maximum
+        array[valid] = array[valid] / maximum
     return array.astype(np.float32)
 
 
@@ -484,6 +495,9 @@ def main() -> None:
     parser.add_argument("--roughness", type=float, default=1.0, help="roughness intensity for local terrain noise")
     parser.add_argument("--heightmap", type=Path, help="optional grayscale elevation image or .npy heightmap")
     parser.add_argument("--dem", type=Path, help="optional path to real-world DEM or GeoTIFF file")
+    parser.add_argument("--hardware", action="store_true", help="enable live serial hardware input")
+    parser.add_argument("--serial-port", default="/dev/ttyUSB0", help="serial port for HIL communication")
+    parser.add_argument("--baud-rate", type=int, default=115200, help="baud rate for HIL communication")
     args = parser.parse_args()
 
     noninteractive_backends = {"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"}
@@ -502,6 +516,9 @@ def main() -> None:
         height_variation=args.height_variation,
         obstacle_density=args.obstacle_density,
         roughness=args.roughness,
+        use_hardware=args.hardware,
+        serial_port=args.serial_port,
+        baud_rate=args.baud_rate,
     )
     if args.dem:
         scenario = build_dem_scenario(args.dem, config=config, size=args.size)

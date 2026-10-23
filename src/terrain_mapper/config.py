@@ -1,5 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+@dataclass
+class HardwareConfig:
+    """Hardware-in-the-Loop (HIL) configuration for live sensor data."""
+    use_hardware: bool = False
+    serial_port: str = "/dev/ttyUSB0"
+    baud_rate: int = 115200
 
 @dataclass(frozen=True)
 class PlannerConfig:
@@ -8,6 +14,7 @@ class PlannerConfig:
     max_slope_degrees: float = 30.0
     slope_cost_weight: float = 4.0
     minimum_cost: float = 1.0
+    hardware: HardwareConfig = field(default_factory=HardwareConfig)
 
     def __post_init__(self) -> None:
         if not 0 < self.max_slope_degrees < 90:

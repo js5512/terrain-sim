@@ -122,10 +122,11 @@ def parse_ascii_dem(source: str | Path | bytes | io.BytesIO) -> ElevationGrid:
 
     values_2d = values_1d.reshape((nrows, ncols))
 
-    # Replace nodata values with NaN
+    # Replace nodata and unfilled values with NaN
+    is_nodata = (values_2d <= -9990.0) | (values_2d >= 1e30) | (values_2d == -32768.0) | (values_2d == -32767.0)
     if nodata_val is not None:
-        is_nodata = np.isclose(values_2d, nodata_val, atol=1e-3) | (values_2d <= -9990.0)
-        values_2d[is_nodata] = np.nan
+        is_nodata |= np.isclose(values_2d, nodata_val, atol=1e-3)
+    values_2d[is_nodata] = np.nan
 
     # In ASCII DEM, row 0 is top (North, max_y)
     transform = (cell_size_x, 0.0, min_x, 0.0, -cell_size_y, max_y)
@@ -149,6 +150,9 @@ def parse_geotiff(source: str | Path | bytes | io.BytesIO) -> ElevationGrid:
     def _extract_from_dataset(dataset: Any) -> ElevationGrid:
         masked = dataset.read(1, masked=True).astype(np.float32)
         values = np.asarray(masked.filled(np.nan), dtype=np.float32)
+        if dataset.nodata is not None:
+            values[np.isclose(values, dataset.nodata, atol=1e-2)] = np.nan
+        values[(values <= -9990.0) | (values >= 1e30) | (values == -32768.0) | (values == -32767.0)] = np.nan
 
         transform = dataset.transform
         bounds = dataset.bounds

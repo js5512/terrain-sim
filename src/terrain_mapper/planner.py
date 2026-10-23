@@ -87,6 +87,10 @@ def astar(
                 if not math.isfinite(c_next):
                     continue
 
+                if dr != 0 and dc != 0:
+                    if not math.isfinite(float(costmap[r + dr, c])) or not math.isfinite(float(costmap[r, c + dc])):
+                        continue
+
                 step_cost = dist * 0.5 * (c_curr + c_next)
                 tentative_g = g + step_cost
                 if tentative_g < g_score[nr, nc]:

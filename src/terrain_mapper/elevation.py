@@ -58,6 +58,31 @@ class ElevationGrid:
         return self.bounds[3]
 
     @property
+    def valid_mask(self) -> NDArray[np.bool_]:
+        """Boolean mask indicating cells containing valid (finite) elevation data."""
+        return np.isfinite(self.values_m)
+
+    @property
+    def unfilled_mask(self) -> NDArray[np.bool_]:
+        """Boolean mask indicating unfilled, nodata, or invalid elevation cells."""
+        return ~np.isfinite(self.values_m)
+
+    @property
+    def valid_bounds_indices(self) -> tuple[int, int, int, int] | None:
+        """Return (min_row, min_col, max_row, max_col) index bounding box of valid data."""
+        valid_indices = np.where(self.valid_mask)
+        if len(valid_indices[0]) == 0:
+            return None
+        min_r, max_r = int(valid_indices[0].min()), int(valid_indices[0].max())
+        min_c, max_c = int(valid_indices[1].min()), int(valid_indices[1].max())
+        return min_r, min_c, max_r, max_c
+
+    def is_valid_cell(self, row: int, col: int) -> bool:
+        """Check if grid cell (row, col) is within array bounds and has valid elevation."""
+        rows, cols = self.values_m.shape
+        return 0 <= row < rows and 0 <= col < cols and bool(np.isfinite(self.values_m[row, col]))
+
+    @property
     def x_coords(self) -> NDArray[np.float32]:
         """1D array of real-world X coordinates for columns."""
         a, b, c, d, e, f = self.transform  # type: ignore[misc]

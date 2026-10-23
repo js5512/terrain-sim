@@ -61,7 +61,7 @@ class InteractiveTerrainEditor:
         self._draw_initial_scene()
         self.mode_widget = RadioButtons(
             self.mode_axes,
-            ("Raise", "Lower", "Obstacle", "Erase"),
+            ("Raise", "Lower", "Obstacle", "Erase", "Spawn", "Goal"),
             active=0,
         )
         self.mode_axes.set_title("Edit mode", loc="left", fontsize=10)
@@ -346,6 +346,16 @@ class InteractiveTerrainEditor:
         brush = distance_squared <= radius**2
         region = self.elevation[row_min:row_max, col_min:col_max]
         obstacle_region = self.obstacles[row_min:row_max, col_min:col_max]
+
+        if self.mode == "Spawn":
+            self.start = (row, col)
+            self.vehicle_cell = (row, col)
+            self._replan()
+            return
+        elif self.mode == "Goal":
+            self.goal = (row, col)
+            self._replan()
+            return
 
         if self.mode in {"Raise", "Lower"}:
             falloff = np.exp(-distance_squared / max(1.0, radius**2 / 2.0))

@@ -14,6 +14,7 @@ dependencies = [
     "plotly>=5.24",
     "rasterio>=1.3",
     "scikit-image>=0.22",
+    "pyserial>=3.5",
 ]
 
 [project.optional-dependencies]
